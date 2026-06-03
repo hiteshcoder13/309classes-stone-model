@@ -1,7 +1,6 @@
 import cv2
 import pickle
 import numpy as np
-from pathlib import Path
 
 import streamlit as st
 import torch
@@ -23,8 +22,6 @@ PROJ_DIM = 512
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-CKPT_DIR = "stone_checkpoints"
-
 
 # --------------------------------------------------
 # TRANSFORM
@@ -45,6 +42,7 @@ VAL_TF = A.Compose([
 # --------------------------------------------------
 
 class StoneEmbedder(nn.Module):
+
     def __init__(self, num_classes, embed_dim=EMBED_DIM):
         super().__init__()
 
@@ -68,6 +66,7 @@ class StoneEmbedder(nn.Module):
         self.classifier = nn.Linear(embed_dim, num_classes)
 
     def forward(self, x, return_embedding=False):
+
         feat = self.backbone(x)
 
         emb = F.normalize(
@@ -88,7 +87,8 @@ class StoneEmbedder(nn.Module):
 @st.cache_resource
 def load_model():
 
-    with open(f"{CKPT_DIR}/splits.pkl", "rb") as f:
+    # directly loading splits.pkl
+    with open("splits.pkl", "rb") as f:
         splits = pickle.load(f)
 
     family_names = splits["FAMILY_NAMES"]
@@ -96,13 +96,15 @@ def load_model():
 
     model = StoneEmbedder(num_classes)
 
+    # directly loading model file
     ckpt = torch.load(
-        f"{CKPT_DIR}/best_stone_model.pt",
+        "best_stone_model.pt",
         map_location=DEVICE,
         weights_only=False
     )
 
     model.load_state_dict(ckpt["model"])
+
     model.to(DEVICE)
     model.eval()
 
@@ -115,12 +117,17 @@ def load_model():
 
 def predict_image(image_np, model, family_names, top_k=5):
 
-    image_rgb = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
+    image_rgb = cv2.cvtColor(
+        image_np,
+        cv2.COLOR_BGR2RGB
+    )
 
     tensor = VAL_TF(image=image_rgb)["image"]
+
     tensor = tensor.unsqueeze(0).to(DEVICE)
 
     with torch.no_grad():
+
         emb, logits = model(tensor)
 
         probs = F.softmax(logits, dim=-1)[0]
@@ -133,6 +140,7 @@ def predict_image(image_np, model, family_names, top_k=5):
     results = []
 
     for idx, prob in zip(top_idxs, top_probs):
+
         results.append({
             "family": family_names[int(idx)],
             "confidence": float(prob)
@@ -184,6 +192,7 @@ if uploaded_files:
         )
 
         with col1:
+
             st.image(
                 cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
                 caption=file.name,
@@ -191,6 +200,7 @@ if uploaded_files:
             )
 
         with st.spinner("Predicting..."):
+
             results = predict_image(
                 image,
                 model,
